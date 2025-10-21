@@ -334,7 +334,7 @@ def act_backward(grad, cache):
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     dfunc = cache["dfunc"]
     a = cache["a"]
-    #assert grad.shape == a.shape
+    assert grad.shape == a.shape
 
     grad_out = grad * dfunc(a)
     assert grad_out.shape == a.shape
