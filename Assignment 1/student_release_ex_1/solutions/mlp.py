@@ -12,17 +12,6 @@ from tqdm import tqdm, trange
 # Do not change the function signatures
 # Do not change any other code
 
-########### DONE ###########
-# loss()
-# delta()
-# sigmoid()
-# dsigmoid()
-# fc_forward()
-# fc_backward()
-# act_forward()
-# act_backward()
-#############################
-
 
 class SquareLoss(object):
     """
@@ -140,7 +129,6 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)***** 
     sigma = 1 / (1 + np.exp(-x))
 
-    # sanity check
     assert sigma.shape == x.shape
     return sigma
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
@@ -168,7 +156,6 @@ def dsigmoid(a: np.ndarray) -> np.ndarray:
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     dsigma = a * (1 - a)
     
-    # sanity check
     assert dsigma.shape == a.shape
     return dsigma
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
@@ -216,11 +203,11 @@ def fc_forward(a, layer):
         Contains values needed for backward pass (e.g. input vector).
     """
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    W, b = layer["W"], layer["b"]
+    W = layer["W"]
+    b = layer["b"]
     z = a @ W + b
     cache = {"x": a}                # as needed for fc_backward()
 
-    # sanity check
     assert z.shape == b.shape
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
@@ -302,9 +289,8 @@ def act_forward(a, func, dfunc):
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     out = func(a)
-    cache = {"dfunc": dfunc, "a": out}
+    cache = {"dfunc": dfunc, "a": out}        # as needed for act_backward()
 
-    # sanity check
     assert out.shape == a.shape
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
@@ -334,9 +320,8 @@ def act_backward(grad, cache):
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     dfunc = cache["dfunc"]
     a = cache["a"]
-    assert grad.shape == a.shape
-
     grad_out = grad * dfunc(a)
+    
     assert grad_out.shape == a.shape
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
