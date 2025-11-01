@@ -40,7 +40,12 @@ class Perceptron:
         numpy.ndarray: Class labels.
         """
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+         # dot product according to the equation vi=Sum(w*X)+bias
+        lin_output= np.dot(self.w,X)
+        # step function classification 1 if lin_output>0 -1 if lin_output<0
+        y_pred=np.where(lin_output>=0, 1,-1)
+        return y_pred
+        #raise NotImplementedError("Provide your solution here")
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     def fit(self, X, y):
@@ -88,11 +93,12 @@ class Perceptron:
                 prediction_for_update = self.forward(X[wrong_prediction_idx, :])
                 # update the weights of the perceptron at random
                 # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-                raise NotImplementedError("Provide your solution here")
+                #raise NotImplementedError("Provide your solution here")
+                #update rule of the weigth nu*(y-y_pred)*x_i
+                self.w += self.lr * error[wrong_prediction_idx] * X[wrong_prediction_idx]
                 # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
-            # Appending number of misclassified examples
-            # at every iteration.
+            # Appending number of misclassified examples at every iteration.
 
             miss_classifications.append(predictions.shape[0] - np.sum(error == 0))
 
@@ -113,5 +119,6 @@ class Perceptron:
 
     
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        #raise NotImplementedError("Provide your solution here")
+        return self.forward(X.T)   
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
