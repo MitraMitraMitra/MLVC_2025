@@ -1,3 +1,5 @@
+*.ipynb
+*.pyc
 Assignment 1/student_release_ex_1/.ipynb_checkpoints/start_here-checkpoint.ipynb
 Assignment 1/student_release_ex_1/solutions/.ipynb_checkpoints/cnn-checkpoint.py
 Assignment 1/student_release_ex_1/utils/.ipynb_checkpoints/pick_device-checkpoint.py
