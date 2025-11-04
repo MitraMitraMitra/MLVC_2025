@@ -192,9 +192,61 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
     C_out, C_in, k, _ = W.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
-    # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
+    # Input spatial sizes
+    C_in_x, H_in, W_in = x.shape  # don't shadow W (the weights)
+    
+    H_p, W_p = H_in + 2 * pad, W_in + 2 * pad
+    
+    # Output spatial sizes
+    H_out = (H_p - k) // stride + 1
+    W_out = (W_p - k) // stride + 1
+    
+    # Zero padding
+    x_pad = np.pad(x, ((0, 0), (pad, pad), (pad, pad)), mode="constant")
+    
+    # im2col via as_strided: view of all k×k windows at stride
+    s_c, s_h, s_w = x_pad.strides
+    x_windows = np.lib.stride_tricks.as_strided(
+        x_pad,
+        shape=(C_in, k, k, H_out, W_out),
+        strides=(s_c, s_h, s_w, s_h * stride, s_w * stride),
+        writeable=False,
+    )
+    
+    # Flatten patches to columns: (C_in*k*k, H_out*W_out)
+    X_cols = x_windows.reshape(C_in * k * k, H_out * W_out)
+    
+    # Reshape filters: (C_out, C_in*k*k)
+    W_col = W.reshape(C_out, C_in * k * k)
+    
+    # Convolution as GEMM + bias → (C_out, H_out, W_out)
+    out = (W_col @ X_cols + b[:, None]).reshape(C_out, H_out, W_out)
+    
+    # Cache for backward pass
+    cache = {
+        "x_shape": x.shape,
+        "W": W,
+        "b": b,
+        "stride": stride,
+        "pad": pad,
+        "H_out": H_out,
+        "W_out": W_out,
+        "k": k,
+        "cols": X_cols,
+        "xp_shape": x_pad.shape, # padded input shape (C_in, H+2*pad, W+2*pad)
+
+        # lightweight indexing helpers if you need them in backward
+        # (kernel offsets and channel indices):
+        "idx": (
+            np.arange(k),         # i offsets inside the k×k kernel
+            np.arange(k),         # j offsets inside the k×k kernel
+            np.arange(W.shape[1]) # channel indices: 0..C_in-1
+        ),
+    }
+
+
+    # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     return out, cache
 
 def _conv2d_backward(dout, cache):
@@ -251,7 +303,43 @@ def _conv2d_backward(dout, cache):
     idx = cache["idx"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+
+    # Shapes / hyperparams
+    C_out, C_in, k, _ = W.shape
+    _, H_out, W_out = dout.shape
+    _, H_in, W_in = x_shape
+    
+    # ---- Bias grad ----
+    db = dout.sum(axis=(1, 2))  # (C_out,)
+    
+    # ---- Weight grad via GEMM ----
+    # dout_col: (C_out, H_out*W_out)
+    dout_col = dout.reshape(C_out, H_out * W_out)
+    
+    # cols: (C_in*k*k, H_out*W_out)
+    # dW_col: (C_out, C_in*k*k) -> reshape to (C_out,C_in,k,k)
+    dW_col = dout_col @ cols.T
+    dW = dW_col.reshape(C_out, C_in, k, k)
+    
+    # ---- Input grad via GEMM + col2im ----
+    # dcols = W^T @ dout_col  -> (C_in*k*k, H_out*W_out)
+    W_col = W.reshape(C_out, C_in * k * k)
+    dcols = W_col.T @ dout_col  # (C_in*k*k, H_out*W_out)
+    
+    # col2im: scatter-add into padded input gradient
+    dx_padded = np.zeros(xp_shape, dtype=dcols.dtype)  # (C_in, H_in+2*pad, W_in+2*pad)
+    dcols_5d = dcols.reshape(C_in, k, k, H_out, W_out)
+    
+    # For each kernel position, place gradients at strided locations
+    for i in range(k):
+        ii = slice(i, i + stride * H_out, stride)
+        for j in range(k):
+            jj = slice(j, j + stride * W_out, stride)
+            dx_padded[:, ii, jj] += dcols_5d[:, i, j, :, :]
+    
+    # Trim padding to match input shape
+    dx = dx_padded[:, pad:pad + H_in, pad:pad + W_in]
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return dx.astype(np.float64), dW.astype(np.float64), db.astype(np.float64)
@@ -300,7 +388,41 @@ def _maxpool2d_forward(x, kernel=2, stride=2):
     C, H, W = x.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    
+    k = kernel
+    H_out = (H - k) // stride + 1
+    W_out = (W - k) // stride + 1
+    
+    # Strided view of all k×k windows: (C, k, k, H_out, W_out)
+    s_c, s_h, s_w = x.strides
+    windows = np.lib.stride_tricks.as_strided(
+        x,
+        shape=(C, k, k, H_out, W_out),
+        strides=(s_c, s_h, s_w, s_h * stride, s_w * stride),
+        writeable=False,
+    )
+    
+    # Forward output and argmax (flatten k×k -> k*k)
+    out = windows.max(axis=(1, 2))                            # (C, H_out, W_out)
+    flat = windows.reshape(C, k * k, H_out, W_out)            # (C, k*k, H_out, W_out)
+    argmax_flat = flat.argmax(axis=1)                         # (C, H_out, W_out)
+    
+    # Grids of output indices for vectorized backward scatter
+    i_out = np.arange(H_out)[None, :, None]                   # (1, H_out, 1)
+    j_out = np.arange(W_out)[None, None, :]                   # (1, 1, W_out)
+    c_out = np.arange(C)[:, None, None]                       # (C, 1, 1)
+    
+    cache = {
+        "x_shape": x.shape,
+        "kernel": k,
+        "stride": stride,
+        "H_out": H_out,
+        "W_out": W_out,
+        "max_idx": argmax_flat,      # (C, H_out, W_out) argmax inside each k×k window (flattened)
+        "idx": (i_out, j_out, c_out) # output index grids (u, v, c) used in backward
+    }
+
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return out.astype(np.float64), cache
@@ -350,7 +472,24 @@ def _maxpool2d_backward(dout, cache):
     W_out = cache["W_out"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+
+    # Unpack
+    u_grid, v_grid, c_grid = cache["idx"]       # shapes: (1,H_out,1), (1,1,W_out), (C,1,1)
+    k = kernel
+    H_out, W_out = cache["H_out"], cache["W_out"]
+    
+    # Argmax offsets inside each k×k window
+    di = cache["max_idx"] // k                   # (C, H_out, W_out)
+    dj = cache["max_idx"] %  k                   # (C, H_out, W_out)
+    
+    # Absolute input coordinates for the maxima
+    p = u_grid * stride + di                    # (C, H_out, W_out)
+    q = v_grid * stride + dj                    # (C, H_out, W_out)
+    
+    # Scatter-add upstream grads into input gradient
+    dx = np.zeros((C, cache["x_shape"][1], cache["x_shape"][2]), dtype=dout.dtype)
+    dx[c_grid, p, q] += dout                    # advanced indexing; vectorized, no pixel loops
+
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return dx.astype(np.float64)
