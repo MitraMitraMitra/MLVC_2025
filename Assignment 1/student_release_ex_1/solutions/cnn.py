@@ -192,21 +192,21 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
     C_out, C_in, k, _ = W.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-
-    # Apply padding of zeros.
-    x_pad, _ = _pad2d(x, pad) # shape: (C_in, H_in+2*pad, W_in+2*pad)
     
-    # Convert a padded image tensor into a 2D matrix of patches.
-    # shapes of cols: C_in * k * k, H_out * W_out
+    # Apply padding of zeros.
+    # x_pad will have the shape (C_in, H_in + 2 * pad, W_in + 2 * pad)
+    x_pad, _ = _pad2d(x, pad)
+    
+    # Convert the padded input tensor x_pad to a 2D matrix of patches.
     cols, idx, H_out, W_out = _im2col_from_padded(x_pad, k, stride)
     
-    # Filters flattened: (C_out, C_in*k*k)
+    # Flatten the filter tensor.
+    # After this, we have have C_in kernels of size k x k for each output channel.
     W_col = W.reshape(C_out, C_in * k * k)
     
-    # GEMM + bias → (C_out, H_out, W_out)
+    # GEMM + bias
     out = (W_col @ cols + b[:, None]).reshape(C_out, H_out, W_out)
-    
-    # Cache (keys unchanged)
+
     cache = {
         "x_shape": x.shape,
         "W": W,
@@ -216,13 +216,11 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
         "H_out": H_out,
         "W_out": W_out,
         "k": k,
-        "cols": cols,            # (C_in*k*k, H_out*W_out)
-        "xp_shape": x_pad.shape, # padded input shape
-        "idx": idx,              # (i, j, c) from _im2col_from_padded
+        "cols": cols,
+        "xp_shape": x_pad.shape,
+        "idx": idx,
     }
-
-
-
+    
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     return out, cache
 
@@ -298,24 +296,14 @@ def _conv2d_backward(dout, cache):
     dW_col = dout_col @ cols.T
     dW = dW_col.reshape(C_out, C_in, k, k)
     
-    # ---- Input grad via GEMM + col2im ----
-    # dcols = W^T @ dout_col  -> (C_in*k*k, H_out*W_out)
-    W_col = W.reshape(C_out, C_in * k * k)
-    dcols = W_col.T @ dout_col  # (C_in*k*k, H_out*W_out)
+    # ---- Input grad via W^T and col2im helper ----
+    W_col = W.reshape(C_out, C_in * k * k)           # (C_out, C_in*k*k)
+    dcols = W_col.T @ dout_col                        # (C_in*k*k, H_out*W_out)
     
-    # col2im: scatter-add into padded input gradient
-    dx_padded = np.zeros(xp_shape, dtype=dcols.dtype)  # (C_in, H_in+2*pad, W_in+2*pad)
-    dcols_5d = dcols.reshape(C_in, k, k, H_out, W_out)
-    
-    # For each kernel position, place gradients at strided locations
-    for i in range(k):
-        ii = slice(i, i + stride * H_out, stride)
-        for j in range(k):
-            jj = slice(j, j + stride * W_out, stride)
-            dx_padded[:, ii, jj] += dcols_5d[:, i, j, :, :]
-    
-    # Trim padding to match input shape
+    # Scatter-add columns back into padded image, then trim padding
+    dx_padded = _col2im_into_padded(dcols, xp_shape, idx)  # (C_in, H_in+2*pad, W_in+2*pad)
     dx = dx_padded[:, pad:pad + H_in, pad:pad + W_in]
+
 
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
