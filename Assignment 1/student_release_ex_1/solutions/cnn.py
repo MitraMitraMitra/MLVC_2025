@@ -193,37 +193,20 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
-    # Input spatial sizes
-    C_in_x, H_in, W_in = x.shape  # don't shadow W (the weights)
+    # Apply padding of zeros.
+    x_pad, _ = _pad2d(x, pad) # shape: (C_in, H_in+2*pad, W_in+2*pad)
     
-    H_p, W_p = H_in + 2 * pad, W_in + 2 * pad
+    # Convert a padded image tensor into a 2D matrix of patches.
+    # shapes of cols: C_in * k * k, H_out * W_out
+    cols, idx, H_out, W_out = _im2col_from_padded(x_pad, k, stride)
     
-    # Output spatial sizes
-    H_out = (H_p - k) // stride + 1
-    W_out = (W_p - k) // stride + 1
-    
-    # Zero padding
-    x_pad = np.pad(x, ((0, 0), (pad, pad), (pad, pad)), mode="constant")
-    
-    # im2col via as_strided: view of all k×k windows at stride
-    s_c, s_h, s_w = x_pad.strides
-    x_windows = np.lib.stride_tricks.as_strided(
-        x_pad,
-        shape=(C_in, k, k, H_out, W_out),
-        strides=(s_c, s_h, s_w, s_h * stride, s_w * stride),
-        writeable=False,
-    )
-    
-    # Flatten patches to columns: (C_in*k*k, H_out*W_out)
-    X_cols = x_windows.reshape(C_in * k * k, H_out * W_out)
-    
-    # Reshape filters: (C_out, C_in*k*k)
+    # Filters flattened: (C_out, C_in*k*k)
     W_col = W.reshape(C_out, C_in * k * k)
     
-    # Convolution as GEMM + bias → (C_out, H_out, W_out)
-    out = (W_col @ X_cols + b[:, None]).reshape(C_out, H_out, W_out)
+    # GEMM + bias → (C_out, H_out, W_out)
+    out = (W_col @ cols + b[:, None]).reshape(C_out, H_out, W_out)
     
-    # Cache for backward pass
+    # Cache (keys unchanged)
     cache = {
         "x_shape": x.shape,
         "W": W,
@@ -233,17 +216,11 @@ def _conv2d_forward(x, W, b, stride=1, pad=0):
         "H_out": H_out,
         "W_out": W_out,
         "k": k,
-        "cols": X_cols,
-        "xp_shape": x_pad.shape, # padded input shape (C_in, H+2*pad, W+2*pad)
-
-        # lightweight indexing helpers if you need them in backward
-        # (kernel offsets and channel indices):
-        "idx": (
-            np.arange(k),         # i offsets inside the k×k kernel
-            np.arange(k),         # j offsets inside the k×k kernel
-            np.arange(W.shape[1]) # channel indices: 0..C_in-1
-        ),
+        "cols": cols,            # (C_in*k*k, H_out*W_out)
+        "xp_shape": x_pad.shape, # padded input shape
+        "idx": idx,              # (i, j, c) from _im2col_from_padded
     }
+
 
 
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
