@@ -279,31 +279,27 @@ def _conv2d_backward(dout, cache):
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
-    # Shapes / hyperparams
+    # Store the shapes.
     C_out, C_in, k, _ = W.shape
     _, H_out, W_out = dout.shape
     _, H_in, W_in = x_shape
     
-    # ---- Bias grad ----
-    db = dout.sum(axis=(1, 2))  # (C_out,)
+    # Add the bias.
+    db = dout.sum(axis=(1, 2))
     
-    # ---- Weight grad via GEMM ----
-    # dout_col: (C_out, H_out*W_out)
+    # Reshape dout so we can multiply later.
     dout_col = dout.reshape(C_out, H_out * W_out)
     
-    # cols: (C_in*k*k, H_out*W_out)
-    # dW_col: (C_out, C_in*k*k) -> reshape to (C_out,C_in,k,k)
     dW_col = dout_col @ cols.T
     dW = dW_col.reshape(C_out, C_in, k, k)
     
-    # ---- Input grad via W^T and col2im helper ----
-    W_col = W.reshape(C_out, C_in * k * k)           # (C_out, C_in*k*k)
-    dcols = W_col.T @ dout_col                        # (C_in*k*k, H_out*W_out)
+    # Compute gradient.
+    W_col = W.reshape(C_out, C_in * k * k)
+    dcols = W_col.T @ dout_col
+    dx_padded = _col2im_into_padded(dcols, xp_shape, idx)
     
-    # Scatter-add columns back into padded image, then trim padding
-    dx_padded = _col2im_into_padded(dcols, xp_shape, idx)  # (C_in, H_in+2*pad, W_in+2*pad)
+    # Remove padding from image tensor.
     dx = dx_padded[:, pad:pad + H_in, pad:pad + W_in]
-
 
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
@@ -353,29 +349,26 @@ def _maxpool2d_forward(x, kernel=2, stride=2):
     C, H, W = x.shape
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    
+
+    # Calculate number of windows.
     k = kernel
     H_out = (H - k) // stride + 1
     W_out = (W - k) // stride + 1
+
+    # Convert the input tensor x to a 2D matrix of patches.
+    cols, idx, H_out, W_out = _im2col_from_padded(x, k, stride)
     
-    # Strided view of all k×k windows: (C, k, k, H_out, W_out)
-    s_c, s_h, s_w = x.strides
-    windows = np.lib.stride_tricks.as_strided(
-        x,
-        shape=(C, k, k, H_out, W_out),
-        strides=(s_c, s_h, s_w, s_h * stride, s_w * stride),
-        writeable=False,
-    )
+    windows = cols.reshape(C, k, k, H_out, W_out)
+        
+    # Forward output and argmax.
+    out = windows.max(axis=(1, 2))
+    flat = windows.reshape(C, k * k, H_out, W_out)
+    argmax_flat = flat.argmax(axis=1)
     
-    # Forward output and argmax (flatten k×k -> k*k)
-    out = windows.max(axis=(1, 2))                            # (C, H_out, W_out)
-    flat = windows.reshape(C, k * k, H_out, W_out)            # (C, k*k, H_out, W_out)
-    argmax_flat = flat.argmax(axis=1)                         # (C, H_out, W_out)
-    
-    # Grids of output indices for vectorized backward scatter
-    i_out = np.arange(H_out)[None, :, None]                   # (1, H_out, 1)
-    j_out = np.arange(W_out)[None, None, :]                   # (1, 1, W_out)
-    c_out = np.arange(C)[:, None, None]                       # (C, 1, 1)
+    # Grids of output indices for vectorized backward scatter.
+    i_out = np.arange(H_out)[None, :, None]
+    j_out = np.arange(W_out)[None, None, :]
+    c_out = np.arange(C)[:, None, None]
     
     cache = {
         "x_shape": x.shape,
@@ -383,13 +376,12 @@ def _maxpool2d_forward(x, kernel=2, stride=2):
         "stride": stride,
         "H_out": H_out,
         "W_out": W_out,
-        "max_idx": argmax_flat,      # (C, H_out, W_out) argmax inside each k×k window (flattened)
-        "idx": (i_out, j_out, c_out) # output index grids (u, v, c) used in backward
+        "max_idx": argmax_flat,
+        "idx": (i_out, j_out, c_out)
     }
-
-
+    
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-
+    
     return out.astype(np.float64), cache
 
 def _maxpool2d_backward(dout, cache):
@@ -437,23 +429,22 @@ def _maxpool2d_backward(dout, cache):
     W_out = cache["W_out"]
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-
-    # Unpack
-    u_grid, v_grid, c_grid = cache["idx"]       # shapes: (1,H_out,1), (1,1,W_out), (C,1,1)
+    
+    u_grid, v_grid, c_grid = cache["idx"]
     k = kernel
     H_out, W_out = cache["H_out"], cache["W_out"]
     
-    # Argmax offsets inside each k×k window
-    di = cache["max_idx"] // k                   # (C, H_out, W_out)
-    dj = cache["max_idx"] %  k                   # (C, H_out, W_out)
+    # Argmax offsets inside each k × k window.
+    di = cache["max_idx"] // k
+    dj = cache["max_idx"] %  k
     
-    # Absolute input coordinates for the maxima
-    p = u_grid * stride + di                    # (C, H_out, W_out)
-    q = v_grid * stride + dj                    # (C, H_out, W_out)
+    # Input coordinates for the max.
+    p = u_grid * stride + di
+    q = v_grid * stride + dj
     
-    # Scatter-add upstream grads into input gradient
+    # Add upstream grads to input gradient.
     dx = np.zeros((C, cache["x_shape"][1], cache["x_shape"][2]), dtype=dout.dtype)
-    dx[c_grid, p, q] += dout                    # advanced indexing; vectorized, no pixel loops
+    dx[c_grid, p, q] = dx[c_grid, p, q] + dout
 
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
