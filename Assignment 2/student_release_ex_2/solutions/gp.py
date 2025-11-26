@@ -82,12 +82,14 @@ class GaussianProcess:
         K = self.kernel(X, X)
         K += self.noise_variance * np.eye(n)
 
-        # compute Cholesky factorization K = L L.T
+        # compute a Cholesky factorization K = L L.T
         L = cholesky(K)
 
-        # solve for alpha = K^{-1} y efficiently using triangular solves
-        # L u = y, where u = L.T alpha
-        u = solve(L, y); alpha = solve(L.T, u)
+        # solve for alpha = K^{-1} y using triangular solves
+        # K alpha = L L.T alpha = L u = y
+        # u = L^{-1} y; alpha = L.T^{-1} u
+        u = solve(L, y)
+        alpha = solve(L.T, u)
 
         # store values
         self.X_train_ = X
@@ -134,7 +136,7 @@ class GaussianProcess:
         # compute kernel cross-variance
         K = self.kernel(self.X_train_, X)
 
-        # compute predictime mean
+        # compute predictive mean
         mean = K.T @ self.alpha_
 
         # compute standard deviation
@@ -146,7 +148,7 @@ class GaussianProcess:
             v = solve(self.L_, K[:, i])
 
             var = k_xx - np.dot(v, v)
-            std[i] = np.sqrt(var)
+            std[i] = np.sqrt(max(var, 0))
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return mean, std
