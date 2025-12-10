@@ -38,7 +38,7 @@ class GaussianProcess:
     * Variance output quantifies uncertainty of the GP posterior.
     """
 
-    def __init__(self, kernel, noise_variance=1e-6):
+    def __init__(self, kernel, noise_variance = 1e-6):
         if kernel is None:
             raise ValueError("Provide a sklearn kernel object, e.g., RBF(length_scale=1.0).")
         self.kernel = kernel
@@ -73,12 +73,29 @@ class GaussianProcess:
             Fitted GP model with stored training data, Cholesky factor L, and alpha.
         """
 
-        X = np.asarray(X, dtype=np.float64)
-        y = np.asarray(y, dtype=np.float64).ravel()
+        X = np.asarray(X, dtype = np.float64)
+        y = np.asarray(y, dtype = np.float64).ravel()
         n = X.shape[0]
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # kernel Gram matrix, with noise variance added
+        K = self.kernel(X, X)
+        K += self.noise_variance * np.eye(n)
+
+        # compute a Cholesky factorization K = L L.T
+        L = cholesky(K)
+
+        # solve for alpha = K^{-1} y using triangular solves
+        # K alpha = L L.T alpha = L u = y
+        # u = L^{-1} y; alpha = L.T^{-1} u
+        u = solve(L, y)
+        alpha = solve(L.T, u)
+
+        # store values
+        self.X_train_ = X
+        self.y_train_ = y
+        self.L_ = L
+        self.alpha_ = alpha
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return self
@@ -113,10 +130,25 @@ class GaussianProcess:
 
         if self.alpha_ is None:
             raise RuntimeError("Model is not fit yet.")
-        X = np.asarray(X, dtype=np.float64)
+        X = np.asarray(X, dtype = np.float64)
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # compute kernel cross-variance
+        K = self.kernel(self.X_train_, X)
+
+        # compute predictive mean
+        mean = K.T @ self.alpha_
+
+        # compute standard deviation
+        m = X.shape[0]
+        std = np.zeros(m)
+
+        for i in range(m):
+            k_xx = self.kernel(X[i:i+1], X[i:i+1])
+            v = solve(self.L_, K[:, i])
+
+            var = k_xx - np.dot(v, v)
+            std[i] = np.sqrt(max(var, 0))
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return mean, std
