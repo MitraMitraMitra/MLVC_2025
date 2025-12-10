@@ -40,7 +40,12 @@ class LinearRegression:
         X = np.asarray(X, dtype=np.float64)
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # Ensure X is two-dimensional.
+        if X.ndim != 2:
+            X = X.reshape(-1, 1)
+
+        # Create a column of ones (bias) to be prepended.
+        ones = np.ones((X.shape[0], 1), dtype = X.dtype)
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return np.hstack([ones, X])
@@ -74,7 +79,19 @@ class LinearRegression:
             Fitted model.
         """
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+
+        # Add bias column to X.
+        Xb = self._add_bias(X)
+
+        # Solve for weight vector w that minimizes squared error:
+        #       w* = argmin ||Xb w - y||^2
+        self.w, *_ = np.linalg.lstsq(Xb, y, rcond = None)
+
+        # Store number of features (without bias) in self.n_features_.
+        if X.ndim == 1:
+            self.n_features_ = 1
+        else:
+            self.n_features_ = X.shape[1]
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return self
@@ -102,7 +119,24 @@ class LinearRegression:
         """
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # Verify that the model has been fit (weights exist).
+        if self.w is None:
+            raise ValueError("This model has been not been fitted yet.")
+
+        # Add a bias column to X.
+        X = np.asarray(X, dtype=np.float64)
+        Xb = self._add_bias(X)
+
+        # Check that feature dimensions match training.
+        expected_n_cols = self.n_features_ + 1
+        if Xb.shape[1] != expected_n_cols:
+            raise ValueError(
+                "X has "
+                + str(Xb.shape[1] - 1)
+                + " features, but the model was trained with "
+                + str(self.n_features_)
+                + " features."
+            )
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return Xb @ self.w
