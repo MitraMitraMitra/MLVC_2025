@@ -110,7 +110,11 @@ class PatchEmbed(nn.Module):
         self.patch_size = int(patch_size)
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        self.grid_h = img_size//patch_size
+        self.grid_w = img_size//patch_size
+        self.num_patches = self.grid_w * self.grid_h
+        self.projection=nn.Conv2d(in_channels=in_chans, out_channels=embed_dim, kernel_size=patch_size, stride=patch_size)
+
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -137,7 +141,12 @@ class PatchEmbed(nn.Module):
         assert H == self.img_size and W == self.img_size
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+
+        output=self.projection(x)
+        flat_out=output.flatten(2)
+        x=flat_out.transpose(1,2)
+
+        #raise NotImplementedError("Provide your solution here")
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return x
@@ -177,7 +186,22 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        if learnable:
+            self.pe=nn.Parameter(torch.zeros(1, seq_len, d_model)*0.02)
+            
+        else:
+            pe=torch.zeros(seq_len, d_model)
+            pos=torch.arange(0,seq_len, dtype=torch.float).unsqueeze(1)
+            div_term=torch.exp(torch.arange(0, d_model, 2).float()*(-math.log(10000.0)/d_model))
+            pe[:,0::2]=torch.sin(pos*div_term)
+            pe[:,1::2]=torch.cos(pos*div_term)
+            pe=pe.unsqueeze(0)
+            self.register_buffer('pe',pe)
+
+
+
+
+        #raise NotImplementedError("Provide your solution here")
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -204,7 +228,10 @@ class PositionalEncoding(nn.Module):
         assert S == self.seq_len and D == self.d_model
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        x_pos=x+self.pe
+
+
+        #raise NotImplementedError("Provide your solution here")
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return x_pos
@@ -297,7 +324,10 @@ class ViTClassifier(nn.Module):
 
         if use_cls_token:
             # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-            raise NotImplementedError("Provide your solution here")
+            self.cls_token=nn.Parameter(torch.zeros(1,1,d_model))
+            #nn.init.normal_(self.cls_token, std=0.02)
+            seq_len=base_len+1
+            #raise NotImplementedError("Provide your solution here")
             # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
         else:
             self.cls_token = None
@@ -379,7 +409,9 @@ class ViTClassifier(nn.Module):
 
         if self.use_cls_token:
             # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-            raise NotImplementedError("Provide your solution here")
+           cls_tokens=self.cls_token.expand(B,-1,-1)
+           tokens=torch.cat((cls_tokens,tokens),dim=1)
+            #raise NotImplementedError("Provide your solution here")
             # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         h = tokens if self.pos_enc is None else self.pos_enc(tokens)
@@ -392,7 +424,8 @@ class ViTClassifier(nn.Module):
 
         if self.use_cls_token:
             # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-            raise NotImplementedError("Provide your solution here")
+            pooled=h[:,0]
+            #raise NotImplementedError("Provide your solution here")
             # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
         else:
             pooled = h.mean(dim=1)
