@@ -60,7 +60,15 @@ class MultiHeadSelfAttention(nn.Module):
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_head = d_model // num_heads
+
+        self.q_proj = nn.Linear(d_model, d_model, bias=True)
+        self.k_proj = nn.Linear(d_model, d_model, bias=True)
+        self.v_proj = nn.Linear(d_model, d_model, bias=True)
+        self.out_proj = nn.Linear(d_model, d_model, bias=True)
+
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         self.last_attn = None  # (B, H, S, S)
@@ -108,7 +116,26 @@ class MultiHeadSelfAttention(nn.Module):
         assert D == self.d_model
 
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+        
+        H = self.num_heads
+        dh = self.d_head
+
+        q = q.view(B, S, H, dh).transpose(1, 2)
+        k = k.view(B, S, H, dh).transpose(1, 2)
+        v = v.view(B, S, H, dh).transpose(1, 2)
+
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(dh)
+
+        attn = F.softmax(scores, dim=-1)
+        self.last_attn = attn
+
+        context = torch.matmul(attn, v)
+        context = context.transpose(1, 2).contiguous().view(B, S, D)
+        out = self.out_proj(context)
+
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
         return out
