@@ -56,12 +56,11 @@ def patchify(images: torch.Tensor, patch_size: int) -> torch.Tensor:
     N = (16 // patch_size) ** 2
     P = patch_size * patch_size
 
-    # Reshape to (B, C, num_patches_h, patch_h, num_patches_w, patch_w)
+    # reshape to (B, C, num_patches_h, patch_h, num_patches_w, patch_w)
     x = images.view(B, 1, 16 // patch_size, patch_size, 16 // patch_size, patch_size)
     
-    # Permute to bring patch dimensions together
+    # permute to bring patch dimensions together
     x = x.permute(0, 2, 4, 1, 3, 5)
-
     patches = x.reshape(B, N, P)
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
@@ -105,10 +104,9 @@ def unpatchify(patches: torch.Tensor, patch_size: int) -> torch.Tensor:
     # take (B, N, P) and split N into (gh, gw) and P into (1, ph, pw)
     x = patches.view(B, num_patches, num_patches, 1, patch_size, patch_size)
 
-    # rearrange axes so spatial dimensions align correctly.
+    # rearrange axes so spatial dimensions align correctly
     # need the dimensions to be (B, C, gh, ph, gw, pw)
     x = x.permute(0, 3, 1, 4, 2, 5)
-
     x = x.reshape(B, 1, 16, 16)
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
