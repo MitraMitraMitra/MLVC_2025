@@ -52,7 +52,16 @@ def patchify(images: torch.Tensor, patch_size: int) -> torch.Tensor:
     assert patch_size in (4, 8)
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    # raise NotImplementedError("Provide your solution here")
+    N = (16 // patch_size) ** 2
+    P = patch_size * patch_size
+
+    # reshape to (B, C, num_patches_h, patch_h, num_patches_w, patch_w)
+    x = images.view(B, 1, 16 // patch_size, patch_size, 16 // patch_size, patch_size)
+    
+    # permute to bring patch dimensions together
+    x = x.permute(0, 2, 4, 1, 3, 5)
+    patches = x.reshape(B, N, P)
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return patches
@@ -88,7 +97,17 @@ def unpatchify(patches: torch.Tensor, patch_size: int) -> torch.Tensor:
     assert P == patch_size * patch_size
 
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    # raise NotImplementedError("Provide your solution here")
+    num_patches = int(math.sqrt(N))
+
+    # reshape flattened patches
+    # take (B, N, P) and split N into (gh, gw) and P into (1, ph, pw)
+    x = patches.view(B, num_patches, num_patches, 1, patch_size, patch_size)
+
+    # rearrange axes so spatial dimensions align correctly
+    # need the dimensions to be (B, C, gh, ph, gw, pw)
+    x = x.permute(0, 3, 1, 4, 2, 5)
+    x = x.reshape(B, 1, 16, 16)
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
 
     return x
@@ -121,7 +140,20 @@ def random_mask_indices(num_patches: int, mask_ratio: float) -> torch.Tensor:
         mask:     T  F  T  F  F  F  T  F
     """
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    # raise NotImplementedError("Provide your solution here")
+
+    # sample k
+    k = int(round(num_patches * mask_ratio))
+
+    # randomly permute indices from 0..N-1
+    perm_indices = torch.randperm(num_patches)
+
+    # mark the first k indices as True in the mask
+    mask = torch.zeros(num_patches, dtype = torch.bool)
+    true_idx = perm_indices[:k]
+    mask[true_idx] = True
+
+    assert mask.shape == (num_patches,), f"Shape mismatch: expected ({num_patches},), got {mask.shape}"
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
     return mask
 
@@ -161,8 +193,21 @@ def block_mask_indices(grid_h: int, grid_w: int, block_h: int, block_w: int) -> 
     """
     assert 1 <= block_h <= grid_h and 1 <= block_w <= grid_w
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    # raise NotImplementedError("Provide your solution here")
+
+    # randomly choose top-left corner
+    top = torch.randint(0, grid_h - block_h + 1, (1,)).item()
+    left = torch.randint(0, grid_w - block_w + 1, (1,)).item()
+
+    # set rectangle to true
+    mask_2d = torch.zeros((grid_h, grid_w), dtype = torch.bool)
+    mask_2d[top : top + block_h, left : left + block_w] = True
+
+    # flatten mask
+    mask = mask_2d.flatten()
+    assert mask.shape == (grid_h * grid_w,), f"Shape mismatch: expected ({grid_h * grid_w},), got {mask.shape}"
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
+
     return mask
 
 
@@ -201,8 +246,19 @@ def grid_mask_indices(grid_h: int, grid_w: int, step_h: int, step_w: int) -> tor
     """
     assert step_h >= 1 and step_w >= 1
     # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-    raise NotImplementedError("Provide your solution here")
+    # raise NotImplementedError("Provide your solution here")
+
+    # start with all false entries
+    mask_2d = torch.zeros((grid_h, grid_w), dtype = torch.bool)
+
+    # mark positions [0::step_h, 0::step_w] as True
+    mask_2d[0::step_h, 0::step_w] = True
+
+    # flatten mask
+    mask = mask_2d.flatten()
+    assert mask.shape == (grid_h * grid_w,), f"Shape mismatch: expected ({grid_h * grid_w},), got {mask.shape}"
     # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
+
     return mask
 
 
@@ -381,8 +437,26 @@ class TinyMAE(nn.Module):
         * Normalize by total number of masked pixels (avoid div-by-zero).
         """
         # *****BEGINNING OF YOUR CODE (DO NOT DELETE THIS LINE)*****
-        raise NotImplementedError("Provide your solution here")
+        # raise NotImplementedError("Provide your solution here")
+
+        # convert input images into target patches
+        target = patchify(images, self.patch_size)
+
+        # compute squared error
+        sq_err = (recon - target) ** 2
+
+        # multiply error by mask so only masked patches contribute -> unsqueeze mask to (B, N, 1)
+        masked_err = sq_err * mask.unsqueeze(-1)
+
+        # normalize by total number of masked pixels (avoid div-by-zero)
+        masked_pixels = mask.sum() * target.shape[-1]
+
+        if masked_pixels > 0:
+            loss = masked_err.sum() / masked_pixels
+        else:
+            loss = masked_err.sum()
         # *****END OF YOUR CODE (DO NOT DELETE THIS LINE)*****
+
         return loss
 
     @torch.no_grad()
